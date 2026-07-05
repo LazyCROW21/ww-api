@@ -1,0 +1,231 @@
+{
+  "info": {
+    "_postman_id": "ww-api-collection",
+    "name": "WhatsApp Web API",
+    "description": "REST API collection for the WhatsApp Web automation server built with @whiskeysockets/baileys. Start the server with `npm start` before using these requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Base URL of the WhatsApp API server"
+    },
+    {
+      "key": "sender_phone",
+      "value": "15550001234",
+      "type": "string",
+      "description": "Your WhatsApp phone number (digits only, with country code)"
+    },
+    {
+      "key": "recipient_phone",
+      "value": "15559876543",
+      "type": "string",
+      "description": "Recipient WhatsApp phone number (digits only, with country code)"
+    }
+  ],
+  "item": [
+    {
+      "name": "Connect (Get QR Code)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/connect?phone={{sender_phone}}",
+          "host": ["{{base_url}}"],
+          "path": ["connect"],
+          "query": [
+            {
+              "key": "phone",
+              "value": "{{sender_phone}}",
+              "description": "Your WhatsApp phone number with country code (digits only)"
+            }
+          ]
+        },
+        "description": "Initiates a WhatsApp Web connection for the given phone number.\n\n**First call**: Starts a new Baileys socket, waits up to 25 seconds for a QR code to be generated, and returns it.\n\n**Subsequent calls**: Returns the cached QR code if it hasn't expired yet, or waits for a new one.\n\n**Once scanned**: Returns `{ status: 'connected' }` immediately.\n\n### Response fields\n- `status`: `qr` | `connected`\n- `qr`: Raw QR code string (scan with WhatsApp)\n- `qrDataUrl`: Base64-encoded PNG of the QR code (embed in an `<img>` tag)\n- `expiryTime`: ISO 8601 timestamp when the QR code expires (~40s)"
+      },
+      "response": [
+        {
+          "name": "QR Code Generated",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"phone\": \"15550001234\",\n  \"status\": \"qr\",\n  \"qr\": \"2@abc123...\",\n  \"qrDataUrl\": \"data:image/png;base64,iVBORw0KGgo...\",\n  \"expiryTime\": \"2026-07-05T10:18:57.306Z\"\n}"
+        },
+        {
+          "name": "Already Connected",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"connected\",\n  \"phone\": \"15550001234\"\n}"
+        },
+        {
+          "name": "Timeout (QR not generated in time)",
+          "status": "Gateway Timeout",
+          "code": 504,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"error\": \"Timeout waiting for connection QR code\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Disconnect (Logout)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{sender_phone}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/disconnect",
+          "host": ["{{base_url}}"],
+          "path": ["disconnect"]
+        },
+        "description": "Logs out of WhatsApp for the given phone number and permanently deletes the persisted session credentials from the `sessions/<phone>` directory.\n\nAfter calling this, you will need to scan a new QR code via `/connect` to reconnect."
+      },
+      "response": [
+        {
+          "name": "Disconnected Successfully",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"disconnected\",\n  \"phone\": \"15550001234\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Disconnect via GET (convenience)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/disconnect?phone={{sender_phone}}",
+          "host": ["{{base_url}}"],
+          "path": ["disconnect"],
+          "query": [
+            {
+              "key": "phone",
+              "value": "{{sender_phone}}",
+              "description": "Phone number to disconnect"
+            }
+          ]
+        },
+        "description": "Convenience GET alias for the disconnect endpoint. Same behaviour as `POST /disconnect`."
+      },
+      "response": [
+        {
+          "name": "Disconnected Successfully",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"disconnected\",\n  \"phone\": \"15550001234\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/status?phone={{sender_phone}}",
+          "host": ["{{base_url}}"],
+          "path": ["status"],
+          "query": [
+            {
+              "key": "phone",
+              "value": "{{sender_phone}}",
+              "description": "Phone number to check status for"
+            }
+          ]
+        },
+        "description": "Returns the current connection status for a given phone number.\n\n### Possible `status` values\n| Value | Meaning |\n|---|---|\n| `connected` | Socket is open and ready to send messages |\n| `connecting` | Socket is initializing or reconnecting |\n| `qr` | Waiting for QR code to be scanned |\n| `disconnected` | No active session |\n\n### `persisted` field\n`true` if a `sessions/<phone>/creds.json` file exists on disk (session state saved), `false` otherwise."
+      },
+      "response": [
+        {
+          "name": "Connected",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"phone\": \"15550001234\",\n  \"status\": \"connected\",\n  \"persisted\": true\n}"
+        },
+        {
+          "name": "Awaiting QR Scan",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"phone\": \"15550001234\",\n  \"status\": \"qr\",\n  \"persisted\": true\n}"
+        },
+        {
+          "name": "Disconnected",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"phone\": \"15550001234\",\n  \"status\": \"disconnected\",\n  \"persisted\": false\n}"
+        }
+      ]
+    },
+    {
+      "name": "Send Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sender\": \"{{sender_phone}}\",\n  \"recipient\": \"{{recipient_phone}}\",\n  \"message\": \"Hello from WhatsApp Web API! 👋\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/send-message",
+          "host": ["{{base_url}}"],
+          "path": ["send-message"]
+        },
+        "description": "Sends a text-only WhatsApp message from a connected sender session to any recipient.\n\n### Requirements\n- The `sender` session must be in `connected` state (QR scanned and authorized).\n- Phone numbers must include the country code with no special characters (e.g. `15550001234`).\n\n### Body fields\n| Field | Alias | Required | Description |\n|---|---|---|---|\n| `sender` | `phone` | ✅ | Phone number of the connected WhatsApp account |\n| `recipient` | `to` | ✅ | Phone number of the message target |\n| `message` | `text` | ✅ | The plain text message body |"
+      },
+      "response": [
+        {
+          "name": "Message Sent",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"success\": true,\n  \"messageId\": \"3EB0A1B2C3D4E5F6G7H8\",\n  \"timestamp\": 1720173600\n}"
+        },
+        {
+          "name": "Sender Not Connected",
+          "status": "Internal Server Error",
+          "code": 500,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"error\": \"Sender session is not connected. Status: disconnected\"\n}"
+        },
+        {
+          "name": "Missing Parameters",
+          "status": "Bad Request",
+          "code": 400,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"error\": \"Missing required parameters: sender, recipient, and message must be provided.\"\n}"
+        }
+      ]
+    }
+  ]
+}
