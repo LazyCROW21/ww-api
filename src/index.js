@@ -2,6 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import { sessionManager } from './sessionManager.js';
 import { sanitizePhone } from './utils.js';
+import { db } from './db.js';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,8 +17,15 @@ function getPhoneParam(req) {
 }
 
 // RESTORE EXISTING SESSIONS ON STARTUP
-console.log('Initializing existing WhatsApp sessions...');
-await sessionManager.restoreSessions();
+(async () => {
+  try {
+    console.log('Initializing existing WhatsApp sessions...');
+    await sessionManager.restoreSessions();
+  } catch (err) {
+    console.error('Error restoring sessions:', err);
+  }
+})();
+
 
 /**
  * GET /connect
@@ -144,6 +153,20 @@ app.post('/send-message', async (req, res) => {
 
   try {
     const result = await sessionManager.sendMessage(cleanSender, cleanRecipient, message);
+    
+    // Log the message into SQLite database
+    db.run(
+      `INSERT INTO messages (phone, recipient, message) VALUES (?, ?, ?)`,
+      [cleanSender, cleanRecipient, message],
+      (err) => {
+        if (err) {
+          console.error('[Database] Failed to save message log:', err.message);
+        } else {
+          console.log(`[Database] Message log saved successfully for sender: ${cleanSender}`);
+        }
+      }
+    );
+
     res.json({
       success: true,
       messageId: result.key.id,
@@ -152,6 +175,19 @@ app.post('/send-message', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+/**
+ * GET /messages
+ * Retrieves all sent messages logged in the SQLite database.
+ */
+app.get('/messages', (req, res) => {
+  db.all('SELECT * FROM messages ORDER BY timestamp DESC', [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ messages: rows });
+  });
 });
 
 // START EXPRESS SERVER
